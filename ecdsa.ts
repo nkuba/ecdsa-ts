@@ -1,7 +1,7 @@
 #!/usr/bin/env npx ts-node
 
 import { program } from "commander"
-import { ec } from "elliptic"
+import { curve, ec } from "elliptic"
 
 const CURVE_NAME: string = "secp256k1"
 
@@ -44,13 +44,32 @@ program
     console.log("s          :", signatureS.toString("hex"))
     console.log("recovery ID:", signatureRecoveryID)
 
-    const isSignatureValid: boolean = key.verify(message, signature)
-
-    if (isSignatureValid) {
-      console.log("\n\x1b[32mSIGNATURE IS VALID!\x1b[0m")
-    } else {
-      console.error("\n\x1b[31mSIGNATURE IS NOT VALID!\x1b[0m")
+    // Verify Signature.
+    const isSignatureValid: boolean = secp256k1.verify(message, signature, key)
+    if (!isSignatureValid) {
+      program.error("\n\x1b[31mSIGNATURE VERIFICATION FAILED!\x1b[0m")
     }
+
+    // Verify Recovery ID.
+    // `secp256k1.verify` is not verifying the Recovery ID against the Public Key
+    // so it has to be done separately.
+    let recoveredPublicKey: curve.base.BasePoint
+    try {
+     recoveredPublicKey = secp256k1.recoverPubKey(
+      message,
+      { r: signatureR, s: signatureS },
+      signatureRecoveryID,
+      "hex"
+     )
+    } catch (err) {
+      program.error(`"\n\x1b[31mfailed to recover public key from the signature: ${err}\x1b[0m`)
+    }
+
+    if (!key.getPublic().eq(recoveredPublicKey)) {
+      program.error("\n\x1b[31mRECOVERY ID IS NOT VALID!\x1b[0m")
+    }
+
+    console.log("\n\x1b[32mSIGNATURE IS VALID!\x1b[0m")
   })
 
 function decodeHex(value: string): Buffer {
